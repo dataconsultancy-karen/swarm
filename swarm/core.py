@@ -1,15 +1,13 @@
 # Standard library imports
 import copy
 import json
+import os
 from collections import defaultdict
-from typing import List, Callable, Union
+from typing import List
+
+import openai
 
 # Package/library imports
-from openai import OpenAI
-
-
-# Local imports
-from .util import function_to_json, debug_print, merge_chunk
 from .types import (
     Agent,
     AgentFunction,
@@ -20,13 +18,19 @@ from .types import (
     Result,
 )
 
+# Local imports
+from .util import debug_print, function_to_json, merge_chunk
+
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
+openai.api_type = "azure"
+
 __CTX_VARS_NAME__ = "context_variables"
 
 
 class Swarm:
     def __init__(self, client=None):
         if not client:
-            client = OpenAI()
+            client = openai
         self.client = client
 
     def get_chat_completion(
@@ -61,6 +65,7 @@ class Swarm:
             "tools": tools or None,
             "tool_choice": agent.tool_choice,
             "stream": stream,
+            "response_format": {"type": "json_object"},
         }
 
         if tools:
@@ -94,8 +99,7 @@ class Swarm:
         debug: bool,
     ) -> Response:
         function_map = {f.__name__: f for f in functions}
-        partial_response = Response(
-            messages=[], agent=None, context_variables={})
+        partial_response = Response(messages=[], agent=None, context_variables={})
 
         for tool_call in tool_calls:
             name = tool_call.function.name
@@ -112,8 +116,7 @@ class Swarm:
                 )
                 continue
             args = json.loads(tool_call.function.arguments)
-            debug_print(
-                debug, f"Processing tool call: {name} with arguments {args}")
+            debug_print(debug, f"Processing tool call: {name} with arguments {args}")
 
             func = function_map[name]
             # pass context_variables to agent functions
@@ -188,8 +191,7 @@ class Swarm:
                 merge_chunk(message, delta)
             yield {"delim": "end"}
 
-            message["tool_calls"] = list(
-                message.get("tool_calls", {}).values())
+            message["tool_calls"] = list(message.get("tool_calls", {}).values())
             if not message["tool_calls"]:
                 message["tool_calls"] = None
             debug_print(debug, "Received completion:", message)
